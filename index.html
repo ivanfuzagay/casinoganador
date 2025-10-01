@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.5">
+    <link rel="icon" href="logo-ganador.png" type="image/x-icon">
+    <title>Casino Ganador</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background-color: #121212;
+            color: #fff;
+            text-align: center;
+        }
+
+        .hero {
+            height: 100vh;
+            background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url('casino_2.jpg') no-repeat center center/cover;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .hero h1 {
+            font-size: 3em;
+            font-weight: bold;
+            color: #ffdc00;
+            text-shadow: 2px 2px 10px #ff2200;
+            animation: fadeIn 1.5s ease-in-out;
+        }
+        .hero h2 {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #ffdc00;
+            text-shadow: 2px 2px 10px #ff2200;
+            animation: fadeIn 1.5s ease-in-out;
+        }
+
+        .hero p {
+            font-size: 1.2em;
+            margin: 15px 0;
+            animation: fadeIn 2s ease-in-out;
+        }
+
+        .whatsapp-button {
+        display: flex;
+        align-items: center;
+        background: linear-gradient(135deg, #ff00dc, #002fff);
+        color: #fff;
+        padding: 20px 40px;
+        border-radius: 10px;
+        font-size: 2.5em;
+        font-weight: bold;
+        text-decoration: none;
+        box-shadow: 0 0 30px #3900ff;
+        transition: transform 0.3s, box-shadow 0.3s;
+        animation: fadeIn 2.5s ease-in-out;
+        }
+
+        .whatsapp-button i {
+            margin-right: 15px;
+            font-size: 1.8em;
+        }
+
+        .whatsapp-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 60px rgb(57 0 255);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .info {
+            background: #1a1a1a;
+            padding: 50px 20px;
+        }
+
+        .info h2 {
+            font-size: 2em;
+            color: #ff2200;
+        }
+
+        .info p {
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+
+
+        @media (max-width: 900px) {
+            .hero {
+                background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url('casino2_mobile.jpg') no-repeat center center/cover;
+            }
+            .whatsapp-button {
+                font-size: 4em;
+                padding: 20px 24px;
+            }
+        
+            .whatsapp-button i {
+                font-size: 2em; /* Reduce el tamaño del icono de WhatsApp */
+                margin-right: 10px;
+            }
+            .hero h1 {
+                font-size: 2.5em; /* Reduce el tamaño del título */
+            }
+            .hero h2{
+                font-size: 2em;
+            }
+        
+            .hero p {
+                font-size: 1.5em; /* Reduce el tamaño del párrafo */
+            }
+        }
+    </style>
+
+<!-- Meta Pixel Code -->
+<script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '1126561902317774'); 
+  fbq('track', 'PageView');
+</script>
+<noscript>
+  <img height="1" width="1" style="display:none"
+       src="https://www.facebook.com/tr?id=1126561902317774&ev=PageView&noscript=1"/>
+</noscript>
+<!-- End Meta Pixel Code -->
+</head>
+<body>
+    <section class="hero">
+        <h1>¡Casino Ganador!</h1>
+        <h2>Super Premios para vos, sin límites de pagos y cobros inmediatos.</h2>
+        <p>Para crear tu cuenta, envíanos un WhatsApp haciendo click en el botón de abajo</p>
+        
+        <a href="https://api.whatsapp.com/send?phone=5492612351743&text=¡Buen4s!%20Me%20gust4rí4%20cre4r%20un%20usu4rio.%20Mi%20nombre%20es:" 
+           class="whatsapp-button" target="_blank" onclick="fbq('trackCustom', 'WhatsAppClick')">
+         <i class="fab fa-whatsapp"></i> ¡Crea tu usuario!
+        </a>
+    </section>
+    <section class="info">
+        <h2>Beneficios Exclusivos</h2>
+        <p>Recibí bonos de bienvenida y promociones especiales.</p>
+        <p>Mínimo de carga: $2000</p>
+    </section>
+</body>
+</html>
