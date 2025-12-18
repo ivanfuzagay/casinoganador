@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración - JokerCrazy</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #121212, #1a1a1a);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .admin-container {
+            background: #1e1e1e;
+            border-radius: 15px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            color: #38ff00;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-weight: 400;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #2a2a2a;
+            color: #fff;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #38ff00;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #38ff00, #c6ff00);
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(56, 255, 0, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+        }
+
+        .message.success {
+            background: rgba(56, 255, 0, 0.2);
+            border: 2px solid #38ff00;
+            color: #38ff00;
+            display: block;
+        }
+
+        .message.error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #ff0000;
+            color: #ff0000;
+            display: block;
+        }
+
+        .current-info {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .current-info p {
+            color: #ccc;
+            margin: 5px 0;
+        }
+
+        .current-info strong {
+            color: #38ff00;
+        }
+
+        .password-note {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <h1>🔧 Panel de Administración</h1>
+        
+        <div class="current-info" id="currentInfo">
+            <p><strong>Número actual:</strong> <span id="currentPhone">Cargando...</span></p>
+            <p><strong>Mensaje actual:</strong> <span id="currentMessage">Cargando...</span></p>
+        </div>
+
+        <form id="adminForm">
+            <div class="form-group">
+                <label for="password">Contraseña de Administrador:</label>
+                <input type="password" id="password" required>
+                <div class="password-note">Configura ADMIN_PASSWORD en Vercel (por defecto: admin123)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Número de Teléfono (sin espacios ni guiones):</label>
+                <input type="text" id="phone" placeholder="5491157552283" required pattern="[0-9]+">
+            </div>
+
+            <!-- El mensaje de WhatsApp no se puede cambiar, siempre viene de la variable de entorno WHATSAPP_MESSAGE -->
+
+            <button type="submit" class="btn" id="submitBtn">Actualizar Número</button>
+        </form>
+
+        <div class="message" id="message"></div>
+    </div>
+
+    <script>
+        const API_URL = '/api/phone';
+
+        // Cargar información actual
+        async function loadCurrentInfo() {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                
+                document.getElementById('currentPhone').textContent = data.phone || 'No disponible';
+                document.getElementById('currentMessage').textContent = decodeURIComponent(data.message || 'No disponible');
+            } catch (error) {
+                console.error('Error al cargar información:', error);
+                document.getElementById('currentPhone').textContent = 'Error al cargar';
+            }
+        }
+
+        // Manejar envío del formulario
+        document.getElementById('adminForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const messageDiv = document.getElementById('message');
+            const phone = document.getElementById('phone').value.trim();
+            const password = document.getElementById('password').value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Actualizando...';
+            messageDiv.className = 'message';
+            messageDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        phone: phone,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = data.message || '¡Número actualizado correctamente!';
+                    messageDiv.style.display = 'block';
+                    
+                    // Recargar información actual
+                    setTimeout(() => {
+                        loadCurrentInfo();
+                    }, 1000);
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = data.error || 'Error al actualizar';
+                    messageDiv.style.display = 'block';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = 'Error de conexión. Verifica que estés en Vercel.';
+                messageDiv.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Actualizar Número';
+            }
+        });
+
+        // Cargar información al iniciar
+        loadCurrentInfo();
+    </script>
+</body>
+</html>
+
