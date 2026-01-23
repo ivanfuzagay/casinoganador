@@ -35,6 +35,73 @@ function getRedisNamespace(req) {
   return host ? `host:${host}` : 'default';
 }
 
+/**
+ * Normaliza un número de teléfono al formato WhatsApp: 54911xxxxxxxx
+ * - Remueve espacios, guiones, paréntesis, y el símbolo +
+ * - Agrega código de país 54 si falta
+ * - Agrega prefijo móvil 9 si falta
+ * - Agrega código de área 11 (Buenos Aires) si falta, pero respeta si ya tiene otro código
+ * @param {string} phoneNumber - Número de teléfono en cualquier formato
+ * @returns {string} - Número normalizado en formato 54911xxxxxxxx
+ */
+function normalizePhoneNumber(phoneNumber) {
+  if (!phoneNumber) return '';
+  
+  // Limpiar: remover espacios, guiones, paréntesis, y el símbolo +
+  let cleaned = phoneNumber.toString().replace(/[\s\-\(\)\+]/g, '');
+  
+  // Extraer solo dígitos
+  cleaned = cleaned.replace(/\D/g, '');
+  
+  if (!cleaned) return '';
+  
+  // Código de país Argentina
+  const countryCode = '54';
+  // Prefijo móvil
+  const mobilePrefix = '9';
+  // Código de área por defecto (Buenos Aires)
+  const defaultAreaCode = '11';
+  
+  let digits = cleaned;
+  
+  // Si empieza con 54, removerlo temporalmente para procesar
+  if (digits.startsWith('54')) {
+    digits = digits.substring(2);
+  }
+  
+  // Si después del 54 tiene 9, removerlo también
+  if (digits.startsWith('9')) {
+    digits = digits.substring(1);
+  }
+  
+  // Detectar código de área
+  // Los códigos de área en Argentina son 2 dígitos (11, 15, 20, etc.)
+  // El número local típico tiene 6-8 dígitos
+  let areaCode = defaultAreaCode;
+  let localNumber = digits;
+  
+  // Si tiene 10 o más dígitos después de remover 54 y 9,
+  // los primeros 2 dígitos son el código de área
+  if (digits.length >= 10) {
+    areaCode = digits.substring(0, 2);
+    localNumber = digits.substring(2);
+  } else if (digits.length >= 6 && digits.length < 10) {
+    // Si tiene entre 6-9 dígitos, es solo el número local sin código de área
+    // Usamos el código de área por defecto (11)
+    areaCode = defaultAreaCode;
+    localNumber = digits;
+  } else {
+    // Menos de 6 dígitos, usar código por defecto
+    areaCode = defaultAreaCode;
+    localNumber = digits;
+  }
+  
+  // Construir el formato final: 54 + 9 + código_de_área + número_local
+  const normalized = countryCode + mobilePrefix + areaCode + localNumber;
+  
+  return normalized;
+}
+
 export default async function handler(req, res) {
   // Permitir CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -112,10 +179,21 @@ export default async function handler(req, res) {
         }
       }
 
-      // Validar número de teléfono
-      if (!phone || !/^\d+$/.test(phone.replace(/\s/g, ''))) {
-        return res.status(400).json({ error: 'Número de teléfono inválido' });
+      // Validar que se haya proporcionado un número
+      if (!phone) {
+        return res.status(400).json({ error: 'Número de teléfono requerido' });
       }
+
+      // Normalizar el número de teléfono al formato WhatsApp
+      const normalizedPhone = normalizePhoneNumber(phone);
+      
+      // Validar que el número normalizado tenga al menos 10 dígitos (54 + 9 + código área + número local mínimo)
+      if (normalizedPhone.length < 10) {
+        return res.status(400).json({ error: 'Número de teléfono inválido. El número debe tener al menos 6 dígitos locales.' });
+      }
+
+      // Log para debugging
+      console.log(`Número original: ${phone} → Normalizado: ${normalizedPhone}`);
 
       // Guardar en Redis si está disponible
       // NOTA: El mensaje NO se actualiza, solo se guarda el número de teléfono
@@ -125,9 +203,9 @@ export default async function handler(req, res) {
       
       if (redis) {
         try {
-          // Solo guardar el número de teléfono, el mensaje no se modifica
+          // Solo guardar el número de teléfono normalizado, el mensaje no se modifica
           const ns = getRedisNamespace(req);
-          await redis.set(`${ns}:phone_number`, phone);
+          await redis.set(`${ns}:phone_number`, normalizedPhone);
           
           // Incrementar el contador de cambios
           const currentCount = await redis.get(`${ns}:change_count`);
@@ -136,8 +214,9 @@ export default async function handler(req, res) {
           
           return res.status(200).json({
             success: true,
-            message: '¡Número actualizado correctamente en Redis!',
-            changeCount: newCount
+            message: `¡Número actualizado correctamente! Guardado como: ${normalizedPhone}`,
+            changeCount: newCount,
+            normalizedPhone: normalizedPhone
           });
         } catch (redisError) {
           // Si Redis falla, mostrar error claro
