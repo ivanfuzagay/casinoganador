@@ -15,7 +15,7 @@ El contador de cambios es un sistema que:
 
 ### 1. Modificar `api/phone.js`
 
-Necesitas hacer **tres cambios** en el archivo `api/phone.js`:
+Necesitas hacer **cuatro cambios** en el archivo `api/phone.js`:
 
 #### Cambio 1: En el método GET (obtener contador)
 
@@ -165,6 +165,131 @@ if (req.method === 'POST') {
     if (!phone || !/^\d+$/.test(phone.replace(/\s/g, ''))) {
       return res.status(400).json({ error: 'Número de teléfono inválido' });
     }
+```
+
+#### Cambio 4: Agregar función de normalización y actualizar validación
+
+**Agrega esta función ANTES de la función `getRedisNamespace` (o después de la inicialización de Redis):**
+```javascript
+/**
+ * Normaliza un número de teléfono al formato WhatsApp: 54911xxxxxxxx
+ * - Remueve espacios, guiones, paréntesis, y el símbolo +
+ * - Agrega código de país 54 si falta
+ * - Agrega prefijo móvil 9 si falta
+ * - Agrega código de área 11 (Buenos Aires) si falta, pero respeta si ya tiene otro código
+ * @param {string} phoneNumber - Número de teléfono en cualquier formato
+ * @returns {string} - Número normalizado en formato 54911xxxxxxxx
+ */
+function normalizePhoneNumber(phoneNumber) {
+  if (!phoneNumber) return '';
+  
+  // Limpiar: remover espacios, guiones, paréntesis, y el símbolo +
+  let cleaned = phoneNumber.toString().replace(/[\s\-\(\)\+]/g, '');
+  
+  // Extraer solo dígitos
+  cleaned = cleaned.replace(/\D/g, '');
+  
+  if (!cleaned) return '';
+  
+  // Código de país Argentina
+  const countryCode = '54';
+  // Prefijo móvil
+  const mobilePrefix = '9';
+  // Código de área por defecto (Buenos Aires)
+  const defaultAreaCode = '11';
+  
+  let digits = cleaned;
+  
+  // Si empieza con 54, removerlo temporalmente para procesar
+  if (digits.startsWith('54')) {
+    digits = digits.substring(2);
+  }
+  
+  // Si después del 54 tiene 9, removerlo también
+  if (digits.startsWith('9')) {
+    digits = digits.substring(1);
+  }
+  
+  // Detectar código de área
+  // Los códigos de área en Argentina son 2 dígitos (11, 15, 20, etc.)
+  // El número local típico tiene 6-8 dígitos
+  let areaCode = defaultAreaCode;
+  let localNumber = digits;
+  
+  // Si tiene 10 o más dígitos después de remover 54 y 9,
+  // los primeros 2 dígitos son el código de área
+  if (digits.length >= 10) {
+    areaCode = digits.substring(0, 2);
+    localNumber = digits.substring(2);
+  } else if (digits.length >= 6 && digits.length < 10) {
+    // Si tiene entre 6-9 dígitos, es solo el número local sin código de área
+    // Usamos el código de área por defecto (11)
+    areaCode = defaultAreaCode;
+    localNumber = digits;
+  } else {
+    // Menos de 6 dígitos, usar código por defecto
+    areaCode = defaultAreaCode;
+    localNumber = digits;
+  }
+  
+  // Construir el formato final: 54 + 9 + código_de_área + número_local
+  const normalized = countryCode + mobilePrefix + areaCode + localNumber;
+  
+  return normalized;
+}
+```
+
+**Ahora busca la sección de validación del número (después del reset) y reemplázala:**
+```javascript
+    // Validar número de teléfono
+    if (!phone || !/^\d+$/.test(phone.replace(/\s/g, ''))) {
+      return res.status(400).json({ error: 'Número de teléfono inválido' });
+    }
+```
+
+**Reemplázala por:**
+```javascript
+    // Validar que se haya proporcionado un número
+    if (!phone) {
+      return res.status(400).json({ error: 'Número de teléfono requerido' });
+    }
+
+    // Normalizar el número de teléfono al formato WhatsApp
+    const normalizedPhone = normalizePhoneNumber(phone);
+    
+    // Validar que el número normalizado tenga al menos 10 dígitos (54 + 9 + código área + número local mínimo)
+    if (normalizedPhone.length < 10) {
+      return res.status(400).json({ error: 'Número de teléfono inválido. El número debe tener al menos 6 dígitos locales.' });
+    }
+```
+
+**Y finalmente, busca donde se guarda el número en Redis y cambia `phone` por `normalizedPhone`:**
+```javascript
+await redis.set(`${ns}:phone_number`, phone);
+```
+
+**Reemplázala por:**
+```javascript
+await redis.set(`${ns}:phone_number`, normalizedPhone);
+```
+
+**Y actualiza el mensaje de respuesta para incluir el número normalizado:**
+```javascript
+return res.status(200).json({
+  success: true,
+  message: '¡Número actualizado correctamente en Redis!',
+  changeCount: newCount
+});
+```
+
+**Reemplázala por:**
+```javascript
+return res.status(200).json({
+  success: true,
+  message: `¡Número actualizado correctamente! Guardado como: ${normalizedPhone}`,
+  changeCount: newCount,
+  normalizedPhone: normalizedPhone
+});
 ```
 
 ### 2. Modificar `admin.html`
@@ -349,7 +474,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 
 Para replicar el contador en otro proyecto:
 
-- [ ] Copiar los cambios en `api/phone.js` (GET, POST con reset)
+- [ ] Copiar los cambios en `api/phone.js` (GET, POST con reset, función de normalización)
 - [ ] Copiar los cambios en `admin.html` (HTML, estilos, loadCurrentInfo, reset handler, y actualización después de POST)
 - [ ] Verificar que Redis esté configurado en Vercel
 - [ ] Verificar que `REDIS_NAMESPACE` esté configurado (recomendado)
@@ -358,6 +483,8 @@ Para replicar el contador en otro proyecto:
 - [ ] Verificar que el botón "Resetear" aparezca al lado del contador
 - [ ] Probar actualizando el número y verificar que el contador se incremente
 - [ ] Probar el botón de reset y verificar que el contador vuelva a 0
+- [ ] Probar la normalización ingresando números en diferentes formatos (con espacios, con `+`, sin código de área, etc.)
+- [ ] Verificar que el número se guarde siempre en formato `54911xxxxxxxx` (o con otro código de área si se especifica)
 
 ## 🎯 Cómo Funciona
 
@@ -381,6 +508,41 @@ Para replicar el contador en otro proyecto:
 - El contador **no se resetea** automáticamente. Puedes resetearlo manualmente usando el botón "Resetear" en el panel de administración (requiere contraseña de administrador).
 - El contador comienza desde `1` en la primera actualización (no desde `0`).
 - El botón de reset requiere que ingreses la contraseña de administrador antes de poder usarlo.
+- **Normalización automática de números**: Los números de teléfono se normalizan automáticamente al formato WhatsApp (`54911xxxxxxxx`) sin importar cómo se ingresen. Si falta el código de país (`54`), prefijo móvil (`9`), o código de área (`11`), se agregan automáticamente. Si el número tiene un código de área distinto (ej: `15`, `20`), se respeta.
+
+## 📱 Normalización de Números de Teléfono
+
+El sistema incluye una función de normalización automática que convierte cualquier formato de número al formato estándar de WhatsApp (`54911xxxxxxxx`).
+
+### Ejemplos de Normalización
+
+| Entrada | Salida Normalizada | Descripción |
+|---------|-------------------|-------------|
+| `+54 9 11 1234 5678` | `5491112345678` | Ya tiene formato completo |
+| `11 1234 5678` | `5491112345678` | Se agregan `54` y `9` |
+| `1234 5678` | `5491112345678` | Se agregan `54`, `9` y código de área `11` |
+| `15 1234 5678` | `5491512345678` | Se respeta el código de área `15` |
+| `5491112345678` | `5491112345678` | Ya está normalizado |
+| `+5491112345678` | `5491112345678` | Se remueve el `+` |
+| `(11) 1234-5678` | `5491112345678` | Se remueven paréntesis y guiones |
+
+### Cómo Funciona la Normalización
+
+1. **Limpieza**: Remueve espacios, guiones, paréntesis y el símbolo `+`
+2. **Extracción**: Solo conserva dígitos
+3. **Detección**: Identifica si tiene código de país (`54`), prefijo móvil (`9`), y código de área
+4. **Autocompletado**:
+   - Si falta `54` (Argentina), se agrega al inicio
+   - Si falta `9` (móvil), se agrega después del `54`
+   - Si falta código de área, se agrega `11` (Buenos Aires)
+   - Si ya tiene código de área distinto (ej: `15`, `20`), se respeta
+5. **Formato final**: `54` + `9` + código_de_área + número_local
+
+### Validaciones
+
+- El número debe tener al menos 6 dígitos locales para ser válido
+- El formato guardado siempre es `54911xxxxxxxx` (o con otro código de área si se especifica)
+- El número normalizado se muestra en el mensaje de confirmación después de guardar
 
 ## 🔍 Verificación
 
@@ -413,6 +575,13 @@ Después de implementar los cambios:
 - Verifica que Redis esté configurado correctamente
 - Verifica los logs de Vercel para ver si hay errores al resetear el contador
 - Verifica que el método POST esté manejando el parámetro `reset: true` correctamente
+
+### El número no se normaliza correctamente
+- Verifica que la función `normalizePhoneNumber()` esté agregada correctamente
+- Verifica que se esté llamando antes de guardar en Redis
+- Verifica que se esté usando `normalizedPhone` en lugar de `phone` al guardar
+- Revisa los logs de Vercel para ver el número original y el normalizado (se muestran en los logs)
+- Si el número tiene menos de 6 dígitos locales, no se puede normalizar correctamente
 
 ---
 
