@@ -134,6 +134,27 @@
             color: #888;
             margin-top: 5px;
         }
+
+        .reset-btn {
+            background: #ff4444;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 0.8em;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: background 0.3s;
+        }
+
+        .reset-btn:hover {
+            background: #cc0000;
+        }
+
+        .reset-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -143,6 +164,7 @@
         <div class="current-info" id="currentInfo">
             <p><strong>Número actual:</strong> <span id="currentPhone">Cargando...</span></p>
             <p><strong>Mensaje actual:</strong> <span id="currentMessage">Cargando...</span></p>
+            <p><strong>Cambios realizados:</strong> <span id="changeCount" style="color: #38ff00; font-size: 1.2em; font-weight: bold;">0</span> <button id="resetBtn" class="reset-btn">Resetear</button></p>
         </div>
 
         <form id="adminForm">
@@ -176,6 +198,7 @@
                 
                 document.getElementById('currentPhone').textContent = data.phone || 'No disponible';
                 document.getElementById('currentMessage').textContent = decodeURIComponent(data.message || 'No disponible');
+                document.getElementById('changeCount').textContent = data.changeCount !== undefined ? data.changeCount : '0';
             } catch (error) {
                 console.error('Error al cargar información:', error);
                 document.getElementById('currentPhone').textContent = 'Error al cargar';
@@ -215,6 +238,11 @@
                     messageDiv.textContent = data.message || '¡Número actualizado correctamente!';
                     messageDiv.style.display = 'block';
                     
+                    // Actualizar contador inmediatamente si viene en la respuesta
+                    if (data.changeCount !== undefined) {
+                        document.getElementById('changeCount').textContent = data.changeCount;
+                    }
+                    
                     // Recargar información actual
                     setTimeout(() => {
                         loadCurrentInfo();
@@ -231,6 +259,62 @@
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Actualizar Número';
+            }
+        });
+
+        // Manejar reset del contador
+        document.getElementById('resetBtn').addEventListener('click', async () => {
+            const password = document.getElementById('password').value;
+            if (!password) {
+                alert('Por favor ingresa la contraseña de administrador primero');
+                return;
+            }
+
+            if (!confirm('¿Estás seguro de que quieres resetear el contador a 0?')) {
+                return;
+            }
+
+            const resetBtn = document.getElementById('resetBtn');
+            const messageDiv = document.getElementById('message');
+
+            resetBtn.disabled = true;
+            resetBtn.textContent = 'Reseteando...';
+            messageDiv.className = 'message';
+            messageDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reset: true,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = data.message || '¡Contador reseteado correctamente!';
+                    messageDiv.style.display = 'block';
+                    
+                    // Actualizar contador inmediatamente
+                    document.getElementById('changeCount').textContent = '0';
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = data.error || 'Error al resetear el contador';
+                    messageDiv.style.display = 'block';
+                }
+            } catch (error) {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = 'Error de conexión. Verifica que estés en Vercel.';
+                messageDiv.style.display = 'block';
+            } finally {
+                resetBtn.disabled = false;
+                resetBtn.textContent = 'Resetear';
             }
         });
 

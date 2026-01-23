@@ -47,13 +47,16 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      let phoneNumber, message;
+      let phoneNumber, message, changeCount = 0;
 
       // Intentar obtener desde Redis (solo el número, el mensaje siempre viene de la variable de entorno)
       if (redis) {
         try {
           const ns = getRedisNamespace(req);
           phoneNumber = await redis.get(`${ns}:phone_number`);
+          // Obtener el contador de cambios
+          const countStr = await redis.get(`${ns}:change_count`);
+          changeCount = countStr ? parseInt(countStr, 10) : 0;
         } catch (redisError) {
           // Si Redis falla, usar variables de entorno
           console.log('Error al obtener de Redis, usando variables de entorno:', redisError);
@@ -66,7 +69,8 @@ export default async function handler(req, res) {
       
       return res.status(200).json({
         phone: phoneNumber,
-        message: message
+        message: message,
+        changeCount: changeCount
       });
     } catch (error) {
       console.error('Error al obtener el número:', error);
@@ -76,12 +80,36 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      const { phone, password } = req.body;
+      const { phone, password, reset } = req.body;
 
       // Verificar contraseña
       const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
       if (password !== adminPassword) {
         return res.status(401).json({ error: 'Contraseña incorrecta' });
+      }
+
+      // Si es un reset del contador, solo resetear y retornar
+      if (reset === true) {
+        if (redis) {
+          try {
+            const ns = getRedisNamespace(req);
+            await redis.set(`${ns}:change_count`, '0');
+            return res.status(200).json({
+              success: true,
+              message: '¡Contador reseteado correctamente!',
+              changeCount: 0
+            });
+          } catch (redisError) {
+            console.error('Error al resetear contador en Redis:', redisError);
+            return res.status(500).json({ 
+              error: 'Error al resetear el contador: ' + (redisError.message || 'Error desconocido')
+            });
+          }
+        } else {
+          return res.status(500).json({ 
+            error: 'Redis no está configurado. No se puede resetear el contador.'
+          });
+        }
       }
 
       // Validar número de teléfono
@@ -101,9 +129,15 @@ export default async function handler(req, res) {
           const ns = getRedisNamespace(req);
           await redis.set(`${ns}:phone_number`, phone);
           
+          // Incrementar el contador de cambios
+          const currentCount = await redis.get(`${ns}:change_count`);
+          const newCount = currentCount ? parseInt(currentCount, 10) + 1 : 1;
+          await redis.set(`${ns}:change_count`, newCount.toString());
+          
           return res.status(200).json({
             success: true,
-            message: '¡Número actualizado correctamente en Redis!'
+            message: '¡Número actualizado correctamente en Redis!',
+            changeCount: newCount
           });
         } catch (redisError) {
           // Si Redis falla, mostrar error claro
