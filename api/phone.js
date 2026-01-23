@@ -36,13 +36,13 @@ function getRedisNamespace(req) {
 }
 
 /**
- * Normaliza un número de teléfono al formato WhatsApp: 54911xxxxxxxx
+ * Normaliza un número de teléfono al formato WhatsApp: 54911xxxxxxxx (13 dígitos exactos)
  * - Remueve espacios, guiones, paréntesis, y el símbolo +
- * - Agrega código de país 54 si falta
+ * - Agrega código de país 54 si falta (o solo el 4 si empieza con 5)
  * - Agrega prefijo móvil 9 si falta
  * - Agrega código de área 11 (Buenos Aires) si falta, pero respeta si ya tiene otro código
  * @param {string} phoneNumber - Número de teléfono en cualquier formato
- * @returns {string} - Número normalizado en formato 54911xxxxxxxx
+ * @returns {string} - Número normalizado en formato 54911xxxxxxxx (13 dígitos)
  */
 function normalizePhoneNumber(phoneNumber) {
   if (!phoneNumber) return '';
@@ -64,19 +64,39 @@ function normalizePhoneNumber(phoneNumber) {
   
   let digits = cleaned;
   
-  // Si empieza con 54, removerlo temporalmente para procesar
+  // Paso 1: Manejar código de país (54)
+  // Si empieza con 54, removerlo para procesar el resto
   if (digits.startsWith('54')) {
+    digits = digits.substring(2);
+  } 
+  // Si empieza con 5 pero no con 54, agregar solo el 4 después del 5 (le falta el 4)
+  else if (digits.startsWith('5')) {
+    // Reemplazar el 5 inicial por 54 (agregar 4 después del 5)
+    // Ejemplo: 591157542802 -> 5491157542802
+    digits = '54' + digits.substring(1);
+    // Ahora remover el 54 que acabamos de agregar para procesar el resto
+    digits = digits.substring(2);
+  }
+  // Si no empieza con 5 ni 54, agregar 54 completo al inicio
+  else {
+    digits = countryCode + digits;
+    // Remover el 54 para procesar el resto
     digits = digits.substring(2);
   }
   
-  // Si después del 54 tiene 9, removerlo también
+  // Paso 2: Manejar prefijo móvil (9)
+  // Si después del código de país tiene 9, removerlo
   if (digits.startsWith('9')) {
     digits = digits.substring(1);
   }
+  // Si no empieza con 9, agregarlo (pero lo removemos para procesar)
+  else {
+    digits = mobilePrefix + digits;
+    digits = digits.substring(1);
+  }
   
-  // Detectar código de área
-  // Los códigos de área en Argentina son 2 dígitos (11, 15, 20, etc.)
-  // El número local típico tiene 6-8 dígitos
+  // Detectar código de área (2 dígitos) y número local (8 dígitos para completar 13)
+  // Estructura objetivo: 54 (2) + 9 (1) + código área (2) + número local (8) = 13 dígitos
   let areaCode = defaultAreaCode;
   let localNumber = digits;
   
@@ -85,19 +105,35 @@ function normalizePhoneNumber(phoneNumber) {
   if (digits.length >= 10) {
     areaCode = digits.substring(0, 2);
     localNumber = digits.substring(2);
-  } else if (digits.length >= 6 && digits.length < 10) {
-    // Si tiene entre 6-9 dígitos, es solo el número local sin código de área
-    // Usamos el código de área por defecto (11)
+  } 
+  // Si tiene entre 6-9 dígitos, es solo el número local sin código de área
+  else if (digits.length >= 6 && digits.length < 10) {
     areaCode = defaultAreaCode;
     localNumber = digits;
-  } else {
-    // Menos de 6 dígitos, usar código por defecto
+  } 
+  // Menos de 6 dígitos, usar código por defecto
+  else {
     areaCode = defaultAreaCode;
     localNumber = digits;
   }
   
+  // Asegurar que el número local tenga exactamente 8 dígitos
+  // Si tiene más de 8, tomar solo los últimos 8
+  // Si tiene menos de 8, rellenar con ceros al inicio (aunque esto no debería pasar normalmente)
+  if (localNumber.length > 8) {
+    localNumber = localNumber.substring(localNumber.length - 8);
+  } else if (localNumber.length < 8) {
+    // Rellenar con ceros al inicio si tiene menos de 8 dígitos
+    localNumber = localNumber.padStart(8, '0');
+  }
+  
   // Construir el formato final: 54 + 9 + código_de_área + número_local
   const normalized = countryCode + mobilePrefix + areaCode + localNumber;
+  
+  // Validar que tenga exactamente 13 dígitos
+  if (normalized.length !== 13) {
+    console.warn(`Número normalizado tiene ${normalized.length} dígitos, esperado 13: ${normalized}`);
+  }
   
   return normalized;
 }
