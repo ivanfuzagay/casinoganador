@@ -172,13 +172,13 @@ if (req.method === 'POST') {
 **Agrega esta función ANTES de la función `getRedisNamespace` (o después de la inicialización de Redis):**
 ```javascript
 /**
- * Normaliza un número de teléfono al formato WhatsApp: 54911xxxxxxxx
+ * Normaliza un número de teléfono al formato WhatsApp: 54911xxxxxxxx (13 dígitos exactos)
  * - Remueve espacios, guiones, paréntesis, y el símbolo +
- * - Agrega código de país 54 si falta
+ * - Agrega código de país 54 si falta (o solo el 4 si empieza con 5)
  * - Agrega prefijo móvil 9 si falta
  * - Agrega código de área 11 (Buenos Aires) si falta, pero respeta si ya tiene otro código
  * @param {string} phoneNumber - Número de teléfono en cualquier formato
- * @returns {string} - Número normalizado en formato 54911xxxxxxxx
+ * @returns {string} - Número normalizado en formato 54911xxxxxxxx (13 dígitos exactos)
  */
 function normalizePhoneNumber(phoneNumber) {
   if (!phoneNumber) return '';
@@ -200,19 +200,39 @@ function normalizePhoneNumber(phoneNumber) {
   
   let digits = cleaned;
   
-  // Si empieza con 54, removerlo temporalmente para procesar
+  // Paso 1: Manejar código de país (54)
+  // Si empieza con 54, removerlo para procesar el resto
   if (digits.startsWith('54')) {
+    digits = digits.substring(2);
+  } 
+  // Si empieza con 5 pero no con 54, agregar solo el 4 después del 5 (le falta el 4)
+  else if (digits.startsWith('5')) {
+    // Reemplazar el 5 inicial por 54 (agregar 4 después del 5)
+    // Ejemplo: 591157542802 -> 5491157542802
+    digits = '54' + digits.substring(1);
+    // Ahora remover el 54 que acabamos de agregar para procesar el resto
+    digits = digits.substring(2);
+  }
+  // Si no empieza con 5 ni 54, agregar 54 completo al inicio
+  else {
+    digits = countryCode + digits;
+    // Remover el 54 para procesar el resto
     digits = digits.substring(2);
   }
   
-  // Si después del 54 tiene 9, removerlo también
+  // Paso 2: Manejar prefijo móvil (9)
+  // Si después del código de país tiene 9, removerlo
   if (digits.startsWith('9')) {
     digits = digits.substring(1);
   }
+  // Si no empieza con 9, agregarlo (pero lo removemos para procesar)
+  else {
+    digits = mobilePrefix + digits;
+    digits = digits.substring(1);
+  }
   
-  // Detectar código de área
-  // Los códigos de área en Argentina son 2 dígitos (11, 15, 20, etc.)
-  // El número local típico tiene 6-8 dígitos
+  // Detectar código de área (2 dígitos) y número local (8 dígitos para completar 13)
+  // Estructura objetivo: 54 (2) + 9 (1) + código área (2) + número local (8) = 13 dígitos
   let areaCode = defaultAreaCode;
   let localNumber = digits;
   
@@ -221,19 +241,35 @@ function normalizePhoneNumber(phoneNumber) {
   if (digits.length >= 10) {
     areaCode = digits.substring(0, 2);
     localNumber = digits.substring(2);
-  } else if (digits.length >= 6 && digits.length < 10) {
-    // Si tiene entre 6-9 dígitos, es solo el número local sin código de área
-    // Usamos el código de área por defecto (11)
+  } 
+  // Si tiene entre 6-9 dígitos, es solo el número local sin código de área
+  else if (digits.length >= 6 && digits.length < 10) {
     areaCode = defaultAreaCode;
     localNumber = digits;
-  } else {
-    // Menos de 6 dígitos, usar código por defecto
+  } 
+  // Menos de 6 dígitos, usar código por defecto
+  else {
     areaCode = defaultAreaCode;
     localNumber = digits;
   }
   
+  // Asegurar que el número local tenga exactamente 8 dígitos
+  // Si tiene más de 8, tomar solo los últimos 8
+  // Si tiene menos de 8, rellenar con ceros al inicio (aunque esto no debería pasar normalmente)
+  if (localNumber.length > 8) {
+    localNumber = localNumber.substring(localNumber.length - 8);
+  } else if (localNumber.length < 8) {
+    // Rellenar con ceros al inicio si tiene menos de 8 dígitos
+    localNumber = localNumber.padStart(8, '0');
+  }
+  
   // Construir el formato final: 54 + 9 + código_de_área + número_local
   const normalized = countryCode + mobilePrefix + areaCode + localNumber;
+  
+  // Validar que tenga exactamente 13 dígitos
+  if (normalized.length !== 13) {
+    console.warn(`Número normalizado tiene ${normalized.length} dígitos, esperado 13: ${normalized}`);
+  }
   
   return normalized;
 }
@@ -257,9 +293,9 @@ function normalizePhoneNumber(phoneNumber) {
     // Normalizar el número de teléfono al formato WhatsApp
     const normalizedPhone = normalizePhoneNumber(phone);
     
-    // Validar que el número normalizado tenga al menos 10 dígitos (54 + 9 + código área + número local mínimo)
-    if (normalizedPhone.length < 10) {
-      return res.status(400).json({ error: 'Número de teléfono inválido. El número debe tener al menos 6 dígitos locales.' });
+    // Validar que el número normalizado tenga exactamente 13 dígitos
+    if (normalizedPhone.length !== 13) {
+      return res.status(400).json({ error: 'Número de teléfono inválido. El número debe tener al menos 6 dígitos locales para completar 13 dígitos totales.' });
     }
 ```
 
@@ -294,7 +330,7 @@ return res.status(200).json({
 
 ### 2. Modificar `admin.html`
 
-Necesitas hacer **cuatro cambios** en el archivo `admin.html`:
+Necesitas hacer **cinco cambios** en el archivo `admin.html`:
 
 #### Cambio 1: Agregar el contador en el HTML
 
@@ -385,7 +421,27 @@ if (response.ok) {
 }
 ```
 
-#### Cambio 4: Agregar estilos y funcionalidad del botón de reset
+#### Cambio 4: Actualizar el campo de entrada para aceptar cualquier formato
+
+**Busca esta sección:**
+```html
+<div class="form-group">
+    <label for="phone">Número de Teléfono (sin espacios ni guiones):</label>
+    <input type="text" id="phone" placeholder="5491157552283" required pattern="[0-9]+">
+</div>
+```
+
+**Reemplázala por:**
+```html
+<div class="form-group">
+    <label for="phone">Número de Teléfono (puedes usar cualquier formato):</label>
+    <input type="text" id="phone" placeholder="+54 11 4344 3600 o 5491143443600" required>
+</div>
+```
+
+**Importante:** Se remueve el atributo `pattern="[0-9]+"` para permitir que el usuario ingrese números con espacios, guiones, paréntesis y el símbolo `+`. La normalización se encargará de limpiar y formatear el número correctamente.
+
+#### Cambio 5: Agregar estilos y funcionalidad del botón de reset
 
 **Busca la sección de estilos (dentro de `<style>`) y agrega estos estilos:**
 ```css
@@ -474,8 +530,8 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 
 Para replicar el contador en otro proyecto:
 
-- [ ] Copiar los cambios en `api/phone.js` (GET, POST con reset, función de normalización)
-- [ ] Copiar los cambios en `admin.html` (HTML, estilos, loadCurrentInfo, reset handler, y actualización después de POST)
+- [ ] Copiar los cambios en `api/phone.js` (GET, POST con reset, función de normalización corregida)
+- [ ] Copiar los cambios en `admin.html` (HTML, campo de entrada sin pattern, estilos, loadCurrentInfo, reset handler, y actualización después de POST)
 - [ ] Verificar que Redis esté configurado en Vercel
 - [ ] Verificar que `REDIS_NAMESPACE` esté configurado (recomendado)
 - [ ] Hacer commit y push
@@ -484,7 +540,8 @@ Para replicar el contador en otro proyecto:
 - [ ] Probar actualizando el número y verificar que el contador se incremente
 - [ ] Probar el botón de reset y verificar que el contador vuelva a 0
 - [ ] Probar la normalización ingresando números en diferentes formatos (con espacios, con `+`, sin código de área, etc.)
-- [ ] Verificar que el número se guarde siempre en formato `54911xxxxxxxx` (o con otro código de área si se especifica)
+- [ ] Verificar que el número se guarde siempre en formato `54911xxxxxxxx` (13 dígitos exactos, o con otro código de área si se especifica)
+- [ ] Probar con números que empiecen con `5` pero no con `54` (ej: `591157542802`) y verificar que se normalice correctamente a `5491157542802`
 
 ## 🎯 Cómo Funciona
 
@@ -508,41 +565,51 @@ Para replicar el contador en otro proyecto:
 - El contador **no se resetea** automáticamente. Puedes resetearlo manualmente usando el botón "Resetear" en el panel de administración (requiere contraseña de administrador).
 - El contador comienza desde `1` en la primera actualización (no desde `0`).
 - El botón de reset requiere que ingreses la contraseña de administrador antes de poder usarlo.
-- **Normalización automática de números**: Los números de teléfono se normalizan automáticamente al formato WhatsApp (`54911xxxxxxxx`) sin importar cómo se ingresen. Si falta el código de país (`54`), prefijo móvil (`9`), o código de área (`11`), se agregan automáticamente. Si el número tiene un código de área distinto (ej: `15`, `20`), se respeta.
+- **Normalización automática de números**: Los números de teléfono se normalizan automáticamente al formato WhatsApp (`54911xxxxxxxx` - 13 dígitos exactos) sin importar cómo se ingresen. Si falta el código de país (`54`), prefijo móvil (`9`), o código de área (`11`), se agregan automáticamente. Si el número empieza con `5` pero no con `54`, se agrega solo el `4` faltante. Si el número tiene un código de área distinto (ej: `15`, `20`), se respeta. El campo de entrada acepta cualquier formato (con espacios, guiones, paréntesis, `+`), y la normalización se encarga de limpiar y formatear.
 
 ## 📱 Normalización de Números de Teléfono
 
-El sistema incluye una función de normalización automática que convierte cualquier formato de número al formato estándar de WhatsApp (`54911xxxxxxxx`).
+El sistema incluye una función de normalización automática que convierte cualquier formato de número al formato estándar de WhatsApp (`54911xxxxxxxx` - **13 dígitos exactos**).
 
 ### Ejemplos de Normalización
 
 | Entrada | Salida Normalizada | Descripción |
 |---------|-------------------|-------------|
-| `+54 9 11 1234 5678` | `5491112345678` | Ya tiene formato completo |
-| `11 1234 5678` | `5491112345678` | Se agregan `54` y `9` |
-| `1234 5678` | `5491112345678` | Se agregan `54`, `9` y código de área `11` |
-| `15 1234 5678` | `5491512345678` | Se respeta el código de área `15` |
-| `5491112345678` | `5491112345678` | Ya está normalizado |
-| `+5491112345678` | `5491112345678` | Se remueve el `+` |
-| `(11) 1234-5678` | `5491112345678` | Se remueven paréntesis y guiones |
+| `+54 9 11 1234 5678` | `5491112345678` | Ya tiene formato completo (13 dígitos) |
+| `+54 11 4344 3600` | `5491143443600` | Se agrega el `9` móvil (13 dígitos) |
+| `11 1234 5678` | `5491112345678` | Se agregan `54` y `9` (13 dígitos) |
+| `1234 5678` | `5491112345678` | Se agregan `54`, `9` y código de área `11` (13 dígitos) |
+| `15 1234 5678` | `5491512345678` | Se respeta el código de área `15` (13 dígitos) |
+| `591157542802` | `5491157542802` | Se agrega el `4` faltante del `54` (13 dígitos) |
+| `5491112345678` | `5491112345678` | Ya está normalizado (13 dígitos) |
+| `+5491112345678` | `5491112345678` | Se remueve el `+` (13 dígitos) |
+| `(11) 1234-5678` | `5491112345678` | Se remueven paréntesis y guiones (13 dígitos) |
 
 ### Cómo Funciona la Normalización
 
 1. **Limpieza**: Remueve espacios, guiones, paréntesis y el símbolo `+`
 2. **Extracción**: Solo conserva dígitos
-3. **Detección**: Identifica si tiene código de país (`54`), prefijo móvil (`9`), y código de área
-4. **Autocompletado**:
-   - Si falta `54` (Argentina), se agrega al inicio
-   - Si falta `9` (móvil), se agrega después del `54`
-   - Si falta código de área, se agrega `11` (Buenos Aires)
-   - Si ya tiene código de área distinto (ej: `15`, `20`), se respeta
-5. **Formato final**: `54` + `9` + código_de_área + número_local
+3. **Detección y autocompletado del código de país (`54`)**:
+   - Si empieza con `54`, se remueve para procesar el resto
+   - Si empieza con `5` pero no con `54`, se reemplaza el `5` por `54` (agregando el `4` faltante)
+   - Si no empieza con `5` ni `54`, se agrega `54` completo al inicio
+4. **Detección y autocompletado del prefijo móvil (`9`)**:
+   - Si tiene `9` después del código de país, se remueve para procesar
+   - Si no tiene `9`, se agrega después del `54`
+5. **Detección del código de área**:
+   - Si tiene 10 o más dígitos después de remover `54` y `9`, los primeros 2 dígitos son el código de área
+   - Si tiene entre 6-9 dígitos, es solo el número local y se agrega código de área `11` por defecto
+   - Si tiene menos de 6 dígitos, se agrega código de área `11` por defecto
+6. **Ajuste del número local**: Se asegura que tenga exactamente 8 dígitos (tomando los últimos 8 si tiene más, o rellenando con ceros si tiene menos)
+7. **Formato final**: `54` (2) + `9` (1) + código_de_área (2) + número_local (8) = **13 dígitos exactos**
 
 ### Validaciones
 
 - El número debe tener al menos 6 dígitos locales para ser válido
 - El formato guardado siempre es `54911xxxxxxxx` (o con otro código de área si se especifica)
+- **Siempre se guardan exactamente 13 dígitos**: `54` (2) + `9` (1) + código área (2) + número local (8)
 - El número normalizado se muestra en el mensaje de confirmación después de guardar
+- El campo de entrada acepta cualquier formato (con espacios, guiones, paréntesis, `+`), sin restricciones de validación HTML
 
 ## 🔍 Verificación
 
@@ -577,11 +644,18 @@ Después de implementar los cambios:
 - Verifica que el método POST esté manejando el parámetro `reset: true` correctamente
 
 ### El número no se normaliza correctamente
-- Verifica que la función `normalizePhoneNumber()` esté agregada correctamente
+- Verifica que la función `normalizePhoneNumber()` esté agregada correctamente con la versión corregida
 - Verifica que se esté llamando antes de guardar en Redis
 - Verifica que se esté usando `normalizedPhone` en lugar de `phone` al guardar
 - Revisa los logs de Vercel para ver el número original y el normalizado (se muestran en los logs)
 - Si el número tiene menos de 6 dígitos locales, no se puede normalizar correctamente
+- Verifica que el campo de entrada en `admin.html` no tenga el atributo `pattern` (debe estar removido)
+- Si el número normalizado no tiene exactamente 13 dígitos, revisa los logs para ver qué está pasando
+
+### El campo de entrada muestra error de validación HTML
+- Verifica que hayas removido el atributo `pattern="[0-9]+"` del campo de entrada en `admin.html`
+- El campo debe aceptar cualquier formato (espacios, guiones, paréntesis, `+`)
+- La normalización se encargará de limpiar y formatear el número
 
 ---
 
