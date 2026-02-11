@@ -122,8 +122,24 @@
         }
     </style>
 
-<!-- Meta Pixel Code -->
+<!-- Meta Pixel Code - Con Advanced Matching y eventID para mejorar calidad de coincidencia y deduplicación -->
 <script>
+  // Obtener o crear ID de visitante persistente (mejora coincidencia entre sesiones)
+  function getMetaVisitorId() {
+    try {
+      var id = localStorage.getItem('meta_vi');
+      if (!id) {
+        id = 'vi_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('meta_vi', id);
+      }
+      return id;
+    } catch (e) { return null; }
+  }
+  // Generar eventID único (mejora deduplicación - clave preferida por Meta)
+  function getMetaEventId() {
+    return 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  }
+
   !function(f,b,e,v,n,t,s)
   {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
   n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -132,11 +148,18 @@
   t.src=v;s=b.getElementsByTagName(e)[0];
   s.parentNode.insertBefore(t,s)}(window, document,'script',
   'https://connect.facebook.net/en_US/fbevents.js');
-  fbq('init', '880864848188106'); 
+
+  // Advanced Matching: external_id y country mejoran la calidad de coincidencia (6.1/10 -> más alto)
+  var advMatch = { country: 'ar' };
+  var vid = getMetaVisitorId();
+  if (vid) advMatch.external_id = vid;
+  fbq('init', '880864848188106', advMatch);
+
+  // eventID en cada evento = clave de deduplicación preferida por Meta
   fbq('track', 'PageView', {
     value: 1000.00,
     currency: 'ARS'
-  });
+  }, { eventID: getMetaEventId() });
 </script>
 <noscript>
   <img height="1" width="1" style="display:none"
@@ -154,7 +177,7 @@
            id="whatsapp-button"
            class="cta-button" 
            target="_blank" 
-           onclick="fbq('trackCustom', 'WhatsAppClick', { value: 100.00, currency: 'ARS' })">
+           onclick="fbq('trackCustom', 'WhatsAppClick', { value: 100.00, currency: 'ARS' }, { eventID: getMetaEventId() })">
             <i class='fab fa-whatsapp'></i> ¡Crea tu usuario!
         </a>
     </section>
